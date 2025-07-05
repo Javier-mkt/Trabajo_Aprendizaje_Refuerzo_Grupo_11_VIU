@@ -1,0 +1,46 @@
+def model_RRNN_DQN(input_shape = (4,84,84), nb_actions = nb_actions):
+    inputs = Input(shape=input_shape)
+    x = Permute((2,3,1))(inputs)
+
+    # Red convolucional
+    x = Convolution2D(32, (8,8), strides = (4,4), activation = "relu")(x)
+    x = Convolution2D(64, (4,4), strides = (2,2), activation = "relu")(x)
+    x = Convolution2D(64, (3,3), strides = (1,1), activation = "relu")(x)
+    x = Flatten()(x)
+    x = Dense(512, activation = "relu")(x)
+    x = Dense(nb_actions, activation = "linear")(x)
+
+    model_DQN = Model(inputs = inputs, outputs = x)
+    return model_DQN
+
+model_DQN = model_RRNN_DQN(input_shape = (4,84,84), nb_actions = nb_actions)
+print(model_DQN.summary())
+
+processor = AtariProcessor()
+memory = SequentialMemory(limit=800000, window_length = 4)
+policy = LinearAnnealedPolicy(EpsGreedyQPolicy(), attr = "eps", value_max = 1.0, value_min = 0.1, value_test = 0, nb_steps = 1000000)  
+
+DQN = DQNAgent(model = model_DQN,
+               nb_actions = nb_actions,
+               memory = memory,
+               gamma = 0.99,
+               batch_size = 32   
+               train_interval = 4,
+               enable_double_dqn = True,       # Habilitamos el double DQN, para ver resultados
+               enable_dueling_network = True,  # Sigue siendo dueling, pero haciendolo automaticamente la libería 
+               dueling_type = "avg",
+               nb_steps_warmup = 50000,
+               target_model_update = 5000,  # Se baja a 5000 
+               policy = policy,
+               processor = processor)
+
+DQN.compile(Adam(learning_rate = 1e-4),metrics=['mae'])  #Usar en futuro hubber clipping?
+
+folder = f"version_{version}"
+weights_filename = os.path.join(folder, f'dqn_v_{version}_final_weights.h5f')
+
+DQN.fit(env, nb_steps=2000000, visualize=False, verbose=2, callbacks=[metricas, guardar_pesos_iteraciones, guardar_mejores_pesos]) # Se aumenta entrenamiento a 2 millones de steps
+DQN.save_weights(weights_filename, overwrite=True)
+
+
+# Se descarga pesos cada 100 episodios
